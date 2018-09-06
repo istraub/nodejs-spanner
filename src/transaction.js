@@ -17,13 +17,13 @@
 'use strict';
 
 const {promisifyAll} = require('@google-cloud/promisify');
-const common = require('@google-cloud/common-grpc');
 const extend = require('extend');
 const gax = require('google-gax');
 const is = require('is');
 const path = require('path');
 const protobuf = require('protobufjs');
 const through = require('through2');
+const util = require('util');
 
 const config = require('./v1/spanner_client_config.json').interfaces[
   'google.spanner.v1.Spanner'
@@ -39,11 +39,6 @@ const TransactionRequest = require('./transaction-request');
  * @private
  */
 const UNKNOWN = 2;
-
-/**
- * the gRPC `DEADLINE_EXCEEDED` error code.
- */
-const DEADLINE_EXCEEDED = 4;
 
 /**
  * The gRPC `ABORTED` error code.
@@ -699,11 +694,16 @@ class Transaction extends TransactionRequest {
    * @return {boolean}
    */
   shouldRetry_(err) {
+    console.log(`ShouldRetry transaction time: ${Date.now() - this.beginTime_}`);
+    console.log(`ShouldRetry err: ${JSON.stringify(err)}`);
+    console.log(`ShouldRetry err retry_info_key length: ${err.metadata.get(RETRY_INFO_KEY).length > 0}`);
+    console.log(`ShouldRetry err code: ${err.code}`);
+
     return (
       this.isRetryableErrorCode_(err.code) &&
       is.fn(this.runFn_) &&
-      Date.now() - this.beginTime_ < this.timeout_ &&
-      err.metadata.get(RETRY_INFO_KEY).length > 0
+      Date.now() - this.beginTime_ < this.timeout_ //&&
+      //err.metadata.get(RETRY_INFO_KEY).length > 0
     );
   }
   /**
@@ -725,13 +725,10 @@ class Transaction extends TransactionRequest {
    * @return {object}
    */
   static createDeadlineError_(err) {
-    let apiError = new common.util.ApiError({
+    return extend({}, err, {
+      code: 4,
       message: 'Deadline for Transaction exceeded.',
-      code: DEADLINE_EXCEEDED,
-      errors: [err],
     });
-
-    return apiError;
   }
   /**
    * Extracts retry delay and formats into milliseconds.
@@ -742,13 +739,18 @@ class Transaction extends TransactionRequest {
    * @return {number}
    */
   static getRetryDelay_(err) {
+    return 0;
+    /*
     const retryInfo = err.metadata.get(RETRY_INFO_KEY)[0];
     const retryDelay = RetryInfo.decode(retryInfo).retryDelay;
     const seconds = parseInt(retryDelay.seconds.toNumber(), 10) * 1000;
     const milliseconds = parseInt(retryDelay.nanos, 10) / 1e6;
     return seconds + milliseconds;
+    */
   }
 }
+
+util.inherits(Transaction, TransactionRequest);
 
 /*! Developer Documentation
  *
